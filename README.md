@@ -42,26 +42,89 @@ Eğer proje zaten bir Git repository'si ise ve güncellemeleri almak istiyorsan�
 git pull
 ```
 
-### Projeyi Paylaşma
+### Projeyi Paylaşma (Detaylı Rehber)
 
-Projeyi arkadaşlarınızla paylaşmak için:
+Projeyi arkadaşlarınızla paylaşmak için aşağıdaki adımları takip edin:
 
-1. **GitHub/GitLab/Bitbucket gibi bir platformda repository oluşturun**
-2. **Remote repository'yi ekleyin:**
-   ```bash
-   git remote add origin <repository-url>
-   ```
-3. **Değişiklikleri commit edin:**
+#### Adım 1: GitHub'da Repository Oluşturma
+
+1. **GitHub'a giriş yapın:**
+   - https://github.com adresine gidin
+   - Hesabınız yoksa "Sign up" ile yeni hesap oluşturun
+
+2. **Yeni repository oluşturun:**
+   - Sağ üst köşedeki **"+"** butonuna tıklayın
+   - **"New repository"** seçeneğini seçin
+   - Repository adını girin (örn: `FreeRTOS_PC_Scheduler`)
+   - **"Public"** veya **"Private"** seçin (Public = herkes görebilir, Private = sadece siz ve eklediğiniz kişiler)
+   - **"Initialize this repository with a README"** seçeneğini işaretlemeyin (zaten README'miz var)
+   - **"Add .gitignore"** seçeneğini de işaretlemeyin (zaten .gitignore'muz var)
+   - **"Create repository"** butonuna tıklayın
+
+3. **Repository URL'ini kopyalayın:**
+   - Oluşturduğunuz repository sayfasında yeşil **"Code"** butonuna tıklayın
+   - HTTPS veya SSH URL'ini kopyalayın (HTTPS daha kolay, örnek: `https://github.com/kullaniciadi/FreeRTOS_PC_Scheduler.git`)
+
+#### Adım 2: Remote Repository'yi Eklemek
+
+Terminal/PowerShell'de proje klasöründe şu komutu çalıştırın (URL'yi kendi repository URL'inizle değiştirin):
+
+```bash
+git remote add origin https://github.com/kullaniciadi/FreeRTOS_PC_Scheduler.git
+```
+
+**Not:** Eğer remote zaten eklenmişse hata alırsınız. Kontrol etmek için:
+```bash
+git remote -v
+```
+
+Eğer remote varsa ve değiştirmek istiyorsanız:
+```bash
+git remote set-url origin https://github.com/kullaniciadi/FreeRTOS_PC_Scheduler.git
+```
+
+#### Adım 3: Değişiklikleri Göndermek
+
+1. **Tüm değişiklikleri ekleyin:**
    ```bash
    git add .
-   git commit -m "Değişiklik açıklaması"
    ```
-4. **Değişiklikleri paylaşın:**
+
+2. **Commit edin (eğer yeni değişiklik varsa):**
    ```bash
-   git push -u origin main
-   # veya
+   git commit -m "Proje hazır"
+   ```
+
+3. **GitHub'a gönderin:**
+   ```bash
    git push -u origin master
    ```
+   
+   **İlk kez gönderirken GitHub kullanıcı adı ve şifre/token isteyebilir:**
+   - Kullanıcı adınızı girin
+   - Şifre yerine **Personal Access Token** kullanmanız gerekebilir (GitHub güvenlik politikası)
+   - Token oluşturmak için: GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token
+
+#### Adım 4: Arkadaşlarınızın Projeyi İndirmesi
+
+Arkadaşlarınız projeyi şu şekilde indirebilir:
+
+```bash
+git clone https://github.com/kullaniciadi/FreeRTOS_PC_Scheduler.git
+cd FreeRTOS_PC_Scheduler
+```
+
+#### Alternatif: GitLab veya Bitbucket Kullanımı
+
+**GitLab için:**
+1. https://gitlab.com adresine gidin ve repository oluşturun
+2. URL formatı: `https://gitlab.com/kullaniciadi/FreeRTOS_PC_Scheduler.git`
+
+**Bitbucket için:**
+1. https://bitbucket.org adresine gidin ve repository oluşturun
+2. URL formatı: `https://bitbucket.org/kullaniciadi/FreeRTOS_PC_Scheduler.git`
+
+Komutlar aynı şekilde çalışır, sadece URL değişir.
 
 ### Git Temel Komutlar
 
