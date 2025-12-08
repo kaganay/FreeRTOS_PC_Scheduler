@@ -23,9 +23,13 @@ FreeRTOS_PC_Scheduler/
 └── README.md                   # Bu dosya
 ```
 
-## Git ile Projeyi İndirme
+## Git ile Projeyi İndirme ve Paylaşma
 
-Bu proje Git ile versiyon kontrolü altındadır. Projeyi klonlamak için:
+Bu proje Git ile versiyon kontrolü altındadır. 
+
+### Projeyi İndirme
+
+Projeyi klonlamak için:
 
 ```bash
 git clone <repository-url>
@@ -37,6 +41,35 @@ Eğer proje zaten bir Git repository'si ise ve güncellemeleri almak istiyorsan�
 ```bash
 git pull
 ```
+
+### Projeyi Paylaşma
+
+Projeyi arkadaşlarınızla paylaşmak için:
+
+1. **GitHub/GitLab/Bitbucket gibi bir platformda repository oluşturun**
+2. **Remote repository'yi ekleyin:**
+   ```bash
+   git remote add origin <repository-url>
+   ```
+3. **Değişiklikleri commit edin:**
+   ```bash
+   git add .
+   git commit -m "Değişiklik açıklaması"
+   ```
+4. **Değişiklikleri paylaşın:**
+   ```bash
+   git push -u origin main
+   # veya
+   git push -u origin master
+   ```
+
+### Git Temel Komutlar
+
+- `git status` - Değişiklikleri görüntüle
+- `git add .` - Tüm değişiklikleri stage'e ekle
+- `git commit -m "mesaj"` - Değişiklikleri commit et
+- `git push` - Değişiklikleri remote repository'ye gönder
+- `git pull` - Remote repository'den güncellemeleri çek
 
 ## Gereksinimler
 
