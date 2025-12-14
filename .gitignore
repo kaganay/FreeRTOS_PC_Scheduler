@@ -1,0 +1,37 @@
+# Derlenmiş dosyalar
+*.o
+*.obj
+*.exe
+freertos_sim
+freertos_sim.exe
+
+# Derleme çıktıları
+*.a
+*.so
+*.dll
+
+# Debug dosyalar
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDE dosyaları
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Geçici dosyalar
+*.tmp
+*.log
+*.bak
+*.cache
+
+# Build dizinleri
+build/
+dist/
+bin/
+
