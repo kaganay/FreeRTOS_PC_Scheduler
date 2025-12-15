@@ -121,10 +121,8 @@ git push -u origin master
 cd FreeRTOS_PC_Scheduler
 git status
 ```
-
 ---
 
 ## 📚 Daha Fazla Bilgi
 
 Detaylı bilgi için `README.md` dosyasındaki "Git ile Projeyi İndirme ve Paylaşma" bölümüne bakın.
-
