@@ -1,366 +1,278 @@
+// Gerekli kütüphaneleri dahil et
 #include "scheduler.h"
+#include "tasks.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-/**
- * Yeni bir kuyruk oluşturur
- */
-Queue* queue_create(void) {
-    Queue* queue = (Queue*)malloc(sizeof(Queue));
-    if (queue == NULL) {
-        fprintf(stderr, "Error: Could not allocate memory for queue!\n");
-        return NULL;
-    }
-    
-    queue->front = NULL;
-    queue->rear = NULL;
-    queue->size = 0;
-    
-    return queue;
-}
+/* Son yazdırılan rengi ve ID'yi takip etmek için statik değişkenler */
+/* sadece 1 kere tanimla */
+static const char* last_printed_color = NULL;
+static int last_printed_id = -1;
 
-/**
- * Kuyruğu temizler
- * Not: Görevler tasks dizisinde tutulduğu için burada destroy edilmez
- */
-void queue_destroy(Queue* queue) {
-    if (queue == NULL) {
-        return;
-    }
-    
-    // Sadece kuyruk yapısını temizle, görevleri değil
-    // Görevler tasks dizisinde tutuluyor
-    free(queue);
-}
+/* Queue'dan TIMEOUT/COMPLETED olmayan ilk elemani cek */
+/* Kuyruktan geçerli (çalıştırılabilir) bir görev çıkarır */
+static Task* dequeue_valid(Queue* q) {
+    // Kuyruk boşalana kadar döngü
+    while (!queue_is_empty(q)) {
+        Task* t = queue_dequeue(q);
+        if (!t) return NULL;
 
-/**
- * Kuyruğa görev ekler (FIFO)
- */
-void queue_enqueue(Queue* queue, Task* task) {
-    if (queue == NULL || task == NULL) {
-        return;
-    }
-    
-    task->next = NULL;
-    
-    if (queue->rear == NULL) {
-        // Kuyruk boş
-        queue->front = task;
-        queue->rear = task;
-    } else {
-        // Kuyruğun sonuna ekle
-        queue->rear->next = task;
-        queue->rear = task;
-    }
-    
-    queue->size++;
-}
-
-/**
- * Kuyruktan görev çıkarır (FIFO)
- */
-Task* queue_dequeue(Queue* queue) {
-    if (queue == NULL || queue->front == NULL) {
-        return NULL;
-    }
-    
-    Task* task = queue->front;
-    queue->front = queue->front->next;
-    
-    if (queue->front == NULL) {
-        // Kuyruk boşaldı
-        queue->rear = NULL;
-    }
-    
-    queue->size--;
-    task->next = NULL;
-    
-    return task;
-}
-
-/**
- * Kuyruğun boş olup olmadığını kontrol eder
- */
-bool queue_is_empty(Queue* queue) {
-    return (queue == NULL || queue->front == NULL);
-}
-
-/**
- * Kuyruktaki görev sayısını döndürür
- */
-int queue_size(Queue* queue) {
-    if (queue == NULL) {
-        return 0;
-    }
-    return queue->size;
-}
-
-/**
- * Giriş dosyasını parse eder ve görev listesi oluşturur
- */
-int parse_input_file(const char* filename, Task*** tasks) {
-    FILE* file = fopen(filename, "r");
-    if (file == NULL) {
-        fprintf(stderr, "Error: Could not open file '%s'!\n", filename);
-        return -1;
-    }
-    
-    // Önce satır sayısını say
-    int task_count = 0;
-    char line[256];
-    while (fgets(line, sizeof(line), file) != NULL) {
-        // Boş satırları ve yorum satırlarını atla
-        if (line[0] == '\n' || line[0] == '#' || line[0] == '\r') {
-            continue;
-        }
-        task_count++;
-    }
-    
-    if (task_count == 0) {
-        fclose(file);
-        return 0;
-    }
-    
-    // Görev listesi için bellek ayır
-    *tasks = (Task**)malloc(task_count * sizeof(Task*));
-    if (*tasks == NULL) {
-        fprintf(stderr, "Error: Could not allocate memory for task list!\n");
-        fclose(file);
-        return -1;
-    }
-    
-    // Dosyayı başa al
-    rewind(file);
-    
-    // Görevleri oku ve parse et
-    int index = 0;
-    int task_id = 1;
-    
-    while (fgets(line, sizeof(line), file) != NULL) {
-        // Boş satırları ve yorum satırlarını atla
-        if (line[0] == '\n' || line[0] == '#' || line[0] == '\r') {
-            continue;
-        }
-        
-        // Satır sonu karakterlerini temizle
-        line[strcspn(line, "\r\n")] = 0;
-        
-        // CSV formatını parse et: arrival_time,priority,burst_time
-        int arrival_time, priority, burst_time;
-        if (sscanf(line, "%d,%d,%d", &arrival_time, &priority, &burst_time) == 3) {
-            // Öncelik kontrolü
-            if (priority < 0 || priority > 3) {
-                fprintf(stderr, "Warning: Task on line %d has invalid priority value (%d). Skipping.\n", 
-                        index + 1, priority);
-                continue;
-            }
-            
-            // Görev oluştur
-            Task* task = task_create(task_id++, priority, arrival_time, burst_time);
-            if (task != NULL) {
-                (*tasks)[index++] = task;
-            }
-        } else {
-            fprintf(stderr, "Warning: Could not parse line %d: %s\n", index + 1, line);
+        // Sadece timeout veya tamamlanmamış görevleri döndür
+        if (t->state != TASK_TIMEOUT && t->state != TASK_COMPLETED) {
+            return t;
         }
     }
-    
-    fclose(file);
-    return index; // Gerçekte oluşturulan görev sayısı
-}
-
-/**
- * Görev listesini temizler
- */
-void free_task_list(Task** tasks, int count) {
-    if (tasks == NULL) {
-        return;
-    }
-    
-    for (int i = 0; i < count; i++) {
-        task_destroy(tasks[i]);
-    }
-    
-    free(tasks);
-}
-
-/**
- * Scheduler'ı başlatır ve gerekli kuyrukları oluşturur
- */
-SchedulerState* scheduler_init(Task** tasks, int task_count) {
-    (void)tasks;
-    (void)task_count;
-    SchedulerState* scheduler = (SchedulerState*)malloc(sizeof(SchedulerState));
-    if (scheduler == NULL) {
-        fprintf(stderr, "Error: Could not allocate memory for scheduler!\n");
-        return NULL;
-    }
-    
-    scheduler->current_time = 0;
-    scheduler->current_task = NULL;
-    scheduler->total_tasks = task_count;
-    scheduler->completed_tasks = 0;
-    scheduler->task_list = NULL; // Bu görev listesi için kullanılmayacak
-    
-    // Gerçek zamanlı görev kuyruğu
-    scheduler->rt_queue = queue_create();
-    
-    // 3 seviyeli kullanıcı görev kuyrukları
-    for (int i = 0; i < 3; i++) {
-        scheduler->user_queues[i] = queue_create();
-    }
-    
-    return scheduler;
-}
-
-/**
- * Scheduler'ı temizler ve bellekleri serbest bırakır
- */
-void scheduler_destroy(SchedulerState* scheduler) {
-    if (scheduler == NULL) {
-        return;
-    }
-    
-    queue_destroy(scheduler->rt_queue);
-    
-    for (int i = 0; i < 3; i++) {
-        queue_destroy(scheduler->user_queues[i]);
-    }
-    
-    free(scheduler);
-}
-
-/**
- * Yeni gelen görevleri uygun kuyruklara ekler
- */
-void scheduler_process_new_tasks(SchedulerState* scheduler, int current_time) {
-    (void)scheduler;
-    (void)current_time;
-    // Bu fonksiyon main.c'de görev listesini kontrol edecek
-    // Şimdilik placeholder
-}
-
-/**
- * Bir sonraki çalıştırılacak görevi seçer
- */
-Task* scheduler_select_next_task(SchedulerState* scheduler) {
-    if (scheduler == NULL) {
-        return NULL;
-    }
-    
-    // Önce gerçek zamanlı görevleri kontrol et
-    if (!queue_is_empty(scheduler->rt_queue)) {
-        return queue_dequeue(scheduler->rt_queue);
-    }
-    
-    // Sonra kullanıcı görev kuyruklarını yüksek öncelikten düşüğe doğru kontrol et
-    for (int i = 0; i < 3; i++) {
-        if (!queue_is_empty(scheduler->user_queues[i])) {
-            return queue_dequeue(scheduler->user_queues[i]);
-        }
-    }
-    
     return NULL;
 }
 
-/**
- * Görevi çalıştırır (1 saniye veya tamamlanana kadar)
- * Not: Zaman artışı bu fonksiyon dışında yapılmalıdır
+/* Normal loglar */
+/* Görev durumunu renkli olarak ekrana yazdırır */
+static void print_log(double time, const char* status, Task* t) {
+    // Görevin rengini al
+    const char* color_to_use = t->color;
+
+    /* ID 0016 her zaman beyaz olsun */
+    if (t->id == 16) color_to_use = COLOR_WHITE;
+
+    /* Zamanasimi normal print_log ile basilmamali ama garanti olsun */
+    // Zaman aşımı durumunda kırmızı renk kullan
+    if (strcmp(status, "zamanasimi") == 0) {
+        color_to_use = COLOR_RED;
+    } else {
+        /* Farkli ID arka arkaya gelirse ayni renk olmasin */
+        // Ardışık farklı görevler aynı renkte olmasın
+        if (last_printed_color != NULL && last_printed_id != t->id) {
+            if (color_to_use == last_printed_color) {
+                /* alternatif renge gec */
+                // Alternatif renge geç
+                color_to_use = COLOR_WHITE;
+                if (color_to_use == last_printed_color) {
+                    color_to_use = COLOR_CYAN;
+                }
+                /* ID16 sabiti bozulmasin */
+                if (t->id == 16) color_to_use = COLOR_WHITE;
+            }
+        }
+    }
+
+    // Görev bilgilerini formatlanmış şekilde yazdır
+    printf("%s%.4f sn\tproses %-15s\t(id:%04d\toncelik:%d\tkalan sure:%d sn)%s\n",
+           color_to_use,
+           time,
+           status,
+           t->id,
+           t->current_priority,
+           t->remaining_time,
+           COLOR_RESET);
+
+    // Son yazdırılan rengi ve ID'yi güncelle
+    last_printed_color = color_to_use;
+    last_printed_id = t->id;
+}
+
+/* Zamanasimi logu: HER ZAMAN kirmizi */
+/* Zaman aşımı durumunu kırmızı renkte yazdırır */
+static void print_timeout(double time, Task* t) {
+    // Zaman aşımı mesajını formatla
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%-15s", "zamanasimi");
+
+    // Zaman aşımı bilgisini kırmızı renkte yazdır
+    printf(COLOR_RED "%.4f sn\tproses %s\t(id:%04d\toncelik:%d\tkalan sure:%d sn)" COLOR_RESET "\n",
+           time,
+           buf,
+           t->id,
+           t->current_priority,
+           t->remaining_time);
+
+    /* timeout satiri son yazilan renk/id olarak sayilsin ki ard-arda renk kuralin bozulmasin */
+    // Son yazdırılan rengi güncelle (renk kurallarını korumak için)
+    last_printed_color = COLOR_RED;
+    last_printed_id = t->id;
+}
+
+/*
+ * Timeout:
+ * - only tasks that already arrived
+ * - only tasks that are waiting (READY or SUSPENDED)
+ * - not the running task
+ * - reference time:
+ *      if never ran: arrival_time
+ *      if ran before: last_run_time
+ * - (now - reference) >= 20  => timeout
  */
-void scheduler_execute_task(SchedulerState* scheduler, Task* task) {
-    if (scheduler == NULL || task == NULL) {
-        return;
-    }
-    
-    // Eğer görev henüz başlamadıysa, başlat
-    if (task->state != TASK_RUNNING) {
-        task->state = TASK_RUNNING;
-        scheduler->current_task = task;
-        task->start_time = scheduler->current_time;  // Başlama zamanını kaydet
-        
-        // Görev başlangıç mesajı (görsel formatına uygun)
-        printf("%s%.4f sn\t\ttask%d basladi\t(id:%04d) Oncelik:%d kalan sure:%d sn%s\n",
-               task->color, (double)scheduler->current_time, task->id, task->id,
-               task->current_priority, task->remaining_time, COLOR_RESET);
-    }
-    
-    // Timeout kontrolü (20 saniye)
-    if (task->start_time >= 0 && (scheduler->current_time - task->start_time) >= MAX_TASK_TIME) {
-        printf("%s%.4f sn\t\ttask%d zamanasimi\t(id:%04d) Oncelik:%d kalan sure:%d sn%s\n",
-               task->color, (double)scheduler->current_time, task->id, task->id,
-               task->current_priority, task->remaining_time, COLOR_RESET);
-        scheduler_complete_task(scheduler, task);
-        return;
-    }
-    
-    // Görev çalışma mesajı (görsel formatına uygun)
-    printf("%s%.4f sn\t\ttask%d yurutuluyor\t(id:%04d) Oncelik:%d kalan sure:%d sn%s\n",
-           task->color, (double)scheduler->current_time, task->id, task->id,
-           task->current_priority, task->remaining_time, COLOR_RESET);
-    
-    // 1 saniye çalıştır (zaman kuantumu)
-    task->remaining_time--;
-    
-    // Görev tamamlandı mı?
-    if (task->remaining_time <= 0) {
-        scheduler_complete_task(scheduler, task);
+/* Tüm görevleri kontrol ederek zaman aşımına uğrayanları işaretler */
+static void check_timeouts(int now, Task** all, int n, Task* running, int* doneCounter) {
+    // Tüm görevleri dolaş
+    for (int i = 0; i < n; i++) {
+        Task* x = all[i];
+
+        // Zaten tamamlanmış veya timeout olmuş görevleri atla
+        if (x->state == TASK_COMPLETED || x->state == TASK_TIMEOUT) continue;
+        // Şu anda çalışan görevi atla
+        if (x == running) continue;
+        // Henüz gelmemiş görevleri atla
+        if (x->arrival_time > now) continue;
+
+        /* sadece bekleyenler timeout olur */
+        // Sadece hazır veya askıya alınmış görevler timeout olabilir
+        if (!(x->state == TASK_READY || x->state == TASK_SUSPENDED)) continue;
+
+        // Referans zamanı belirle: hiç çalışmadıysa geliş zamanı, çalıştıysa son çalışma zamanı
+        int ref_time = (x->start_time == -1) ? x->arrival_time : x->last_run_time;
+
+        // 20 saniyeden fazla beklediyse timeout
+        if ((now - ref_time) >= 20) {
+            x->state = TASK_TIMEOUT;
+            print_timeout((double)now, x);
+            (*doneCounter)++;
+        }
     }
 }
 
-/**
- * Mevcut görevi askıya alır ve önceliğini düşürür
- */
-void scheduler_suspend_current_task(SchedulerState* scheduler) {
-    if (scheduler == NULL || scheduler->current_task == NULL) {
-        return;
+/* Ana simülasyon fonksiyonu - çok seviyeli geri beslemeli zaman paylaşımlı zamanlayıcıyı çalıştırır */
+void run_simulation(const char* filename) {
+    // Girdi dosyasından görevleri oku
+    Task** all = NULL;
+    int n = parse_input_file(filename, &all);
+    if (n <= 0) return;
+
+    // Öncelik seviyelerine göre kuyruklar oluştur
+    Queue* rt = queue_create();  /* prio 0 - Real-time (en yüksek öncelik) */
+    Queue* q1 = queue_create();  /* prio 1 - Yüksek öncelik */
+    Queue* q2 = queue_create();  /* prio 2 - Orta öncelik */
+    Queue* q3 = queue_create();  /* prio 3+ (RR) - Düşük öncelik, Round-Robin */
+
+    // Simülasyon değişkenleri
+    int t = 0;              // Mevcut zaman
+    int done = 0;           // Tamamlanan görev sayısı
+    Task* running = NULL;   // Şu anda çalışan görev
+
+    // Tüm görevler tamamlanana veya maksimum süreye ulaşana kadar döngü
+    while (done < n && t < 2000) {
+
+        /* 1) arrivals */
+        // Bu zaman diliminde gelen görevleri ilgili kuyruklara ekle
+        for (int i = 0; i < n; i++) {
+            if (all[i]->arrival_time == t) {
+                Task* x = all[i];
+                x->state = TASK_READY;
+
+                // Önceliğine göre uygun kuyruğa ekle
+                if (x->priority == 0) queue_enqueue(rt, x);
+                else if (x->priority == 1) queue_enqueue(q1, x);
+                else if (x->priority == 2) queue_enqueue(q2, x);
+                else queue_enqueue(q3, x);
+            }
+        }
+
+        /* 2) RT calisiyorsa kesme (bitene kadar devam) */
+        // Real-time görev çalışmıyorsa, öncelik sırasına göre yeni görev seç
+        if (!(running && running->priority == 0 && running->state == TASK_RUNNING)) {
+            running = NULL;
+
+            // Öncelik sırasına göre kuyruklardan görev seç (RT > q1 > q2 > q3)
+            Task* pick = dequeue_valid(rt);
+            if (pick) running = pick;
+            else {
+                pick = dequeue_valid(q1);
+                if (pick) running = pick;
+                else {
+                    pick = dequeue_valid(q2);
+                    if (pick) running = pick;
+                    else {
+                        pick = dequeue_valid(q3);
+                        if (pick) running = pick;
+                    }
+                }
+            }
+        }
+
+        /*
+         * LOG SIRASI KURALI:
+         * - Devam eden RT varsa: once yurutuluyor, sonra zamanasimi
+         * - Aksi halde (yeni baslama / user task / bos CPU): once zamanasimi, sonra basladi/yurutuluyor
+         */
+        // Real-time görev devam ediyor mu kontrol et
+        int continuing_rt = (running && running->priority == 0 && running->state == TASK_RUNNING);
+
+        if (continuing_rt) {
+            /* 3A) once yurutuluyor + 1 sn calisma */
+            // RT görev devam ediyor: önce çalışma logu, sonra timeout kontrolü
+            print_log((double)t, "yurutuluyor", running);
+
+            // Kalan süreyi azalt
+            running->remaining_time--;
+
+            // İlk çalışma zamanını ve son çalışma zamanını güncelle
+            if (running->start_time == -1) running->start_time = t;
+            running->last_run_time = t + 1;
+
+            /* 3B) sonra timeoutlar */
+            check_timeouts(t, all, n, running, &done);
+        } else {
+            /* 3A) once timeoutlar */
+            // Yeni görev veya user task: önce timeout kontrolü, sonra çalışma logu
+            check_timeouts(t, all, n, running, &done);
+
+            /* 3B) sonra CPU logu + 1 sn calisma */
+            if (running) {
+                // Görev yeni başlıyorsa "basladi", devam ediyorsa "yurutuluyor" yazdır
+                if (running->state == TASK_READY || running->state == TASK_SUSPENDED) {
+                    running->state = TASK_RUNNING;
+                    print_log((double)t, "basladi", running);
+                } else {
+                    print_log((double)t, "yurutuluyor", running);
+                }
+
+                // Kalan süreyi azalt
+                running->remaining_time--;
+
+                // Zaman bilgilerini güncelle
+                if (running->start_time == -1) running->start_time = t;
+                running->last_run_time = t + 1;
+            }
+        }
+
+        /* 4) advance time */
+        // Zamanı bir saniye ilerlet
+        t++;
+
+        /* 5) slice end: sonlandi / askida */
+        // Zaman dilimi sonu: görev tamamlandı mı yoksa askıya mı alınacak?
+        if (running) {
+            // Görev tamamlandı mı?
+            if (running->remaining_time <= 0) {
+                running->state = TASK_COMPLETED;
+                print_log((double)t, "sonlandi", running);
+                done++;
+                running = NULL;
+            } else {
+                // Real-time görevler kesintisiz devam eder
+                if (running->priority == 0) {
+                    /* RT devam */
+                } else {
+                    // User task: önceliği düşür ve askıya al
+                    running->state = TASK_SUSPENDED;
+                    running->current_priority++;
+
+                    print_log((double)t, "askida", running);
+
+                    /* re-enqueue based on new priority */
+                    // Yeni önceliğine göre kuyruğa geri ekle
+                    if (running->current_priority == 2) queue_enqueue(q2, running);
+                    else queue_enqueue(q3, running);
+
+                    running = NULL;
+                }
+            }
+        }
     }
-    
-    Task* task = scheduler->current_task;
-    task->state = TASK_SUSPENDED;
-    
-    // Askıya alma mesajı (görsel formatına uygun)
-    int new_priority = (task->current_priority < 3) ? task->current_priority + 1 : 3;
-    printf("%s%.4f sn\t\ttask%d askida\t\t(id:%04d) Oncelik:%d kalan sure:%d sn%s\n",
-           task->color, (double)scheduler->current_time, task->id, task->id,
-           new_priority, task->remaining_time, COLOR_RESET);
-    
-    // Önceliği düşür (geri besleme)
-    if (task->current_priority < 3) {
-        task->current_priority++;
-    }
-    
-    // Uygun kuyruğa geri ekle
-    int queue_index = task->current_priority - 1; // 1->0, 2->1, 3->2
-    if (queue_index >= 0 && queue_index < 3) {
-        queue_enqueue(scheduler->user_queues[queue_index], task);
-    }
-    
-    scheduler->current_task = NULL;
+
+    // Kuyrukları ve görev listesini temizle
+    queue_destroy(rt);
+    queue_destroy(q1);
+    queue_destroy(q2);
+    queue_destroy(q3);
+    free_task_list(all, n);
 }
-
-/**
- * Görevi tamamlandı olarak işaretler
- * Not: Görev bellek alanı burada serbest bırakılmaz, 
- *      çünkü görev tasks dizisinde tutuluyor
- */
-void scheduler_complete_task(SchedulerState* scheduler, Task* task) {
-    if (scheduler == NULL || task == NULL) {
-        return;
-    }
-    
-    task->state = TASK_COMPLETED;
-    
-    // Tamamlanma mesajı (görsel formatına uygun)
-    printf("%s%.4f sn\t\ttask%d sonlandi\t(id:%04d) Oncelik:%d kalan sure:0 sn%s\n",
-           task->color, (double)scheduler->current_time, task->id, task->id,
-           task->current_priority, COLOR_RESET);
-    
-    if (scheduler->current_task == task) {
-        scheduler->current_task = NULL;
-    }
-    
-    scheduler->completed_tasks++;
-}
-
-
