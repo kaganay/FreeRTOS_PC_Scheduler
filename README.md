@@ -38,7 +38,11 @@ cd FreeRTOS_PC_Scheduler
 make clean
 make
 ```
+## Çalıstırma Windows PowerShell / CMD
+```bash
+.\freertos_sim giris.txt
 
+```
 ## Çalıştırma (WSL / Linux)
 
 ```bash
