@@ -1,3 +1,5 @@
+# Projenin çalışan son hali İşletimSistemiGrup02 klasörü içerisinde bulunan projedir, diğer duran kodlar ve içerikler projenin geliştirme aşamasından kalan kodlardır.
+
 # FreeRTOS PC Scheduler Simülasyonu
 
 Bu proje, FreeRTOS'un görev sıralayıcısını PC üzerinde POSIX ortamında simüle eder.
